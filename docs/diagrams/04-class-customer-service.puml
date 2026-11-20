@@ -1,0 +1,134 @@
+@startuml 04-class-customer-service
+title customer-service - Diagrama de clases (hexagonal)
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+hide empty members
+
+' Nucleo: RxJava 3 | Infraestructura: Reactor (conversion en los adaptadores)
+
+package "domain" <<Rectangle>> {
+  class Customer {
+    -id : UUID
+    -customerType : CustomerType
+    -documentType : DocumentType
+    -documentNumber : String
+    -name : String
+    -email : String
+    -phone : String
+    -address : String
+    -status : CustomerStatus
+    -createdAt : Instant
+    +deactivate()
+    +isActive() : boolean
+  }
+  enum CustomerType {
+    PERSONAL
+    BUSINESS
+  }
+  enum DocumentType {
+    DNI
+    CEX
+    PASSPORT
+    RUC
+  }
+  enum CustomerStatus {
+    ACTIVE
+    INACTIVE
+  }
+  class DuplicateResourceException
+  class ResourceNotFoundException
+}
+
+package "application.port.in" <<Rectangle>> {
+  interface CreateCustomerUseCase {
+    +create(CreateCustomerCommand) : Single<Customer>
+  }
+  interface GetCustomersUseCase {
+    +findAll(CustomerFilter, PageQuery) : Flowable<Customer>
+    +findById(UUID) : Single<Customer>
+  }
+  interface UpdateCustomerUseCase {
+    +update(UUID, UpdateCustomerCommand) : Single<Customer>
+  }
+  interface DeleteCustomerUseCase {
+    +delete(UUID) : Completable
+  }
+  class CreateCustomerCommand <<record>>
+  class UpdateCustomerCommand <<record>> {
+    documentType, documentNumber, name,
+    email, phone, address
+    (customerType is immutable)
+  }
+  class CustomerFilter <<record>>
+  class PageQuery <<record>> {
+    page : int
+    size : int
+  }
+}
+
+package "application.port.out" <<Rectangle>> {
+  interface CustomerRepositoryPort {
+    +save(Customer) : Single<Customer>
+    +findById(UUID) : Maybe<Customer>
+    +findAll(CustomerFilter, PageQuery) : Flowable<Customer>
+    +existsByDocument(DocumentType, String) : Single<Boolean>
+  }
+}
+
+package "application.service" <<Rectangle>> {
+  class CustomerCommandService
+  class CustomerQueryService
+}
+
+package "infrastructure.adapter.in" <<Rectangle>> {
+  class CustomerController <<inbound adapter>>
+  class CustomerRestMapper
+  class GlobalExceptionHandler {
+    mapea errores a RFC 7807
+  }
+}
+
+package "infrastructure.adapter.out" <<Rectangle>> {
+  class R2dbcCustomerRepositoryAdapter <<outbound adapter>>
+  interface CustomerR2dbcRepository <<Spring Data R2DBC>>
+  class CustomerEntity
+}
+
+CreateCustomerUseCase <|.. CustomerCommandService
+UpdateCustomerUseCase <|.. CustomerCommandService
+DeleteCustomerUseCase <|.. CustomerCommandService
+GetCustomersUseCase <|.. CustomerQueryService
+CustomerCommandService ..> CustomerRepositoryPort
+CustomerQueryService ..> CustomerRepositoryPort
+CustomerCommandService ..> DuplicateResourceException
+CustomerQueryService ..> ResourceNotFoundException
+
+CustomerRepositoryPort <|.. R2dbcCustomerRepositoryAdapter
+R2dbcCustomerRepositoryAdapter ..> CustomerR2dbcRepository
+R2dbcCustomerRepositoryAdapter ..> CustomerEntity
+
+CustomerController ..> CreateCustomerUseCase
+CustomerController ..> GetCustomersUseCase
+CustomerController ..> UpdateCustomerUseCase
+CustomerController ..> DeleteCustomerUseCase
+CustomerController ..> CustomerRestMapper
+
+Customer --> CustomerType
+Customer --> DocumentType
+Customer --> CustomerStatus
+
+note bottom of CustomerCommandService
+  DELETE es una baja logica (deactivate):
+  evita productos huerfanos en account-service
+  y credit-service.
+end note
+
+note bottom of CustomerRepositoryPort
+  La base de datos mantiene una restriccion unica
+  sobre documentType + documentNumber. Si dos altas
+  concurrentes colisionan, el adaptador traduce el
+  conflicto a DuplicateResourceException (HTTP 409).
+end note
+
+@enduml

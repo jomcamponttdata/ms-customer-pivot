@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: customer-service
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+  r2dbc:
+    url: ${CUSTOMER_R2DBC_URL:r2dbc:postgresql://localhost:5432/customer_db}
+    username: ${CUSTOMER_DB_USERNAME:banking}
+    password: ${CUSTOMER_DB_PASSWORD}
+  sql:
+    init:
+      mode: always
+customer:
+  pagination:
+    default-page: ${CUSTOMER_DEFAULT_PAGE:0}
+    default-size: ${CUSTOMER_DEFAULT_PAGE_SIZE:20}
+    max-size: ${CUSTOMER_MAX_PAGE_SIZE:100}
+server:
+  port: ${CUSTOMER_SERVICE_PORT:8081}
+logging:
+  level:
+    com.pivot.banking.customer: INFO

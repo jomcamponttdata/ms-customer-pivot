@@ -1,0 +1,75 @@
+@startuml 08-sequence-customer-service
+title customer-service - Diagrama de secuencia
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Cliente / Empleado\n(Postman)" as User
+participant "CustomerController\n(inbound adapter)" as Controller
+participant "CustomerCommandService\n/ CustomerQueryService" as Service
+participant "CustomerRepositoryPort\n+ R2dbcAdapter" as Repo
+database "PostgreSQL\ncustomer_db" as DB
+
+== 1. Crear cliente (POST /api/v1/customers) ==
+User -> Controller : POST /customers {type, document, name, ...}
+Controller -> Service : create(command)
+Service -> Repo : existsByDocument(type, number)
+Repo -> DB : SELECT 1 (R2DBC)
+DB --> Repo : resultado
+Repo --> Service : Single<Boolean>
+alt documento ya registrado
+  Service --> Controller : DuplicateResourceException
+  Controller --> User : 409 Conflict (problem+json)
+else documento nuevo
+  Service -> Repo : save(Customer ACTIVE)
+  Repo -> DB : INSERT (restriccion unica documentType + documentNumber)
+  alt solicitud concurrente duplica el documento
+    DB --> Repo : unique constraint violation
+    Repo --> Service : DuplicateResourceException
+    Service --> Controller : error
+    Controller --> User : 409 Conflict (problem+json)
+  else cliente creado
+    DB --> Repo : fila creada
+    Repo --> Service : Single<Customer>
+    Service --> Controller : Single<Customer>
+    Controller --> User : 201 Created + Location
+  end
+end
+
+== 2. Listar clientes (GET /api/v1/customers?page=0&size=20) ==
+User -> Controller : GET /customers?customerType=PERSONAL&page=0&size=20
+Controller -> Service : findAll(filter, pageQuery)
+Service -> Repo : findAll(filter, pageQuery)
+Repo -> DB : SELECT ... ORDER BY createdAt, id LIMIT/OFFSET
+DB --> Repo : filas
+Repo --> Service : Flowable<Customer>
+Service --> Controller : Flowable<Customer>
+Controller --> User : 200 OK (application/json o application/x-ndjson)
+
+== 3. Eliminar cliente (DELETE /api/v1/customers/{id}) -> baja logica ==
+User -> Controller : DELETE /customers/{id}
+Controller -> Service : delete(id)
+Service -> Repo : findById(id)
+Repo -> DB : SELECT
+DB --> Repo : fila
+Repo --> Service : Maybe<Customer>
+alt no existe
+  Service --> Controller : ResourceNotFoundException
+  Controller --> User : 404 Not Found
+else existe
+  Service -> Service : customer.deactivate()
+  Service -> Repo : save(Customer INACTIVE)
+  Repo -> DB : UPDATE status = INACTIVE
+  DB --> Repo : OK
+  Service --> Controller : Completable
+  Controller --> User : 204 No Content
+end
+
+note over User, DB
+  GET /customers/{id} y PUT /customers/{id} siguen el mismo patron
+  (buscar -> validar -> guardar). Las respuestas de error usan RFC 7807.
+  account-service y credit-service consultan GET /customers/{id}
+  para conocer tipo y estado (ACTIVE) del cliente.
+end note
+
+@enduml
