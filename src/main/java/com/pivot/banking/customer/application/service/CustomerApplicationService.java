@@ -51,8 +51,7 @@ public class CustomerApplicationService implements CreateCustomer, UpdateCustome
         var normalizedEmail = normalizeOptional(command.email());
         var normalizedPhone = normalizeOptional(command.phone());
         var normalizedAddress = normalizeOptional(command.address());
-        LOGGER.info("Creating customer documentType={}, documentNumber={}",
-                command.documentType(), normalizedDocumentNumber);
+        LOGGER.info("Creating customer");
         return repository.existsByDocument(command.documentType(), normalizedDocumentNumber)
                 .flatMap(exists -> exists
                         ? Single.<Customer>error(new DuplicateCustomerDocumentException())
@@ -60,9 +59,9 @@ public class CustomerApplicationService implements CreateCustomer, UpdateCustome
                                 command.documentType(), normalizedDocumentNumber, normalizedName,
                                 normalizedEmail, normalizedPhone, normalizedAddress,
                                 CustomerStatus.ACTIVE, Instant.now())))
-                .doOnSuccess(customer -> LOGGER.info("Customer created customerId={}", customer.id()))
-                .doOnError(error -> LOGGER.warn("Customer creation failed documentNumber={}: {}",
-                        normalizedDocumentNumber, error.getMessage()));
+                .doOnSuccess(customer -> LOGGER.info("Customer created"))
+                .doOnError(error -> LOGGER.warn("Customer creation failed errorType={}",
+                        error.getClass().getSimpleName()));
     }
 
     /** Updates editable customer details while keeping the customer type immutable. */
@@ -84,25 +83,25 @@ public class CustomerApplicationService implements CreateCustomer, UpdateCustome
     /** Performs the contract's logical deletion by marking the customer inactive. */
     @Override
     public Completable delete(UUID id) {
-        LOGGER.info("Deactivating customer customerId={}", id);
+        LOGGER.info("Deactivating customer");
         return findById(id)
                 .flatMap(customer -> repository.save(customer.deactivate()))
                 .ignoreElement()
-                .doOnComplete(() -> LOGGER.info("Customer deactivated customerId={}", id))
-                .doOnError(error -> LOGGER.warn("Customer deactivation failed customerId={}: {}",
-                        id, error.getMessage()));
+                .doOnComplete(() -> LOGGER.info("Customer deactivated"))
+                .doOnError(error -> LOGGER.warn("Customer deactivation failed errorType={}",
+                        error.getClass().getSimpleName()));
     }
 
     /** Reactivates an existing customer and makes it available to integrations again. */
     @Override
     public Single<Customer> activate(UUID id) {
-        LOGGER.info("Activating customer customerId={}", id);
+        LOGGER.info("Activating customer");
         return repository.findById(id)
                 .switchIfEmpty(Single.error(new CustomerNotFoundException(id)))
                 .flatMap(customer -> repository.save(customer.activate()))
-                .doOnSuccess(customer -> LOGGER.info("Customer activated customerId={}", id))
-                .doOnError(error -> LOGGER.warn("Customer activation failed customerId={}: {}",
-                        id, error.getMessage()));
+                .doOnSuccess(customer -> LOGGER.info("Customer activated"))
+                .doOnError(error -> LOGGER.warn("Customer activation failed errorType={}",
+                        error.getClass().getSimpleName()));
     }
 
     /** Lists customers with validated pagination and optional customer-type filtering. */
@@ -133,8 +132,8 @@ public class CustomerApplicationService implements CreateCustomer, UpdateCustome
                 .flatMap(customer -> customer.status() == com.pivot.banking.customer.domain.CustomerStatus.ACTIVE
                         ? Single.just(customer)
                         : Single.error(new CustomerNotFoundException(id)))
-                .doOnError(error -> LOGGER.warn("Customer lookup failed customerId={}: {}",
-                        id, error.getMessage()));
+                .doOnError(error -> LOGGER.warn("Customer lookup failed errorType={}",
+                        error.getClass().getSimpleName()));
     }
 
     /** Validates fields that create a customer before any repository operation. */
