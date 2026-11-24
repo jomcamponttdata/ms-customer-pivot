@@ -123,6 +123,23 @@ class CustomerApplicationServiceTest {
     }
 
     @Test
+    void acceptsAnEmailAtTheMaximumSupportedLength() {
+        // Arrange
+        String email = "a".repeat(242) + "@example.com";
+        var command = new CreateCustomerCommand(CustomerType.PERSONAL, DocumentType.DNI,
+                "12345678", "Ana Perez", email, null, null);
+        when(repository.existsByDocument(DocumentType.DNI, "12345678")).thenReturn(Single.just(false));
+        when(repository.save(any(Customer.class))).thenAnswer(invocation ->
+                Single.just(invocation.getArgument(0)));
+
+        // Act
+        var result = service.create(command);
+
+        // Assert
+        result.test().assertComplete().assertValue(customer -> email.equals(customer.email()));
+    }
+
+    @Test
     void createValidatesDocumentLengthsNameAndOptionalFields() {
         // Arrange
         var dniShort = new CreateCustomerCommand(CustomerType.PERSONAL, DocumentType.DNI,
@@ -507,5 +524,54 @@ class CustomerApplicationServiceTest {
         ((Flowable<Customer>) all).test().assertComplete();
         verify(repository).findAll(null, CustomerStatus.INACTIVE, 0, 20);
         verify(repository).findAll(null, CustomerStatus.ALL, 0, 20);
+    }
+
+    @Test
+    void acceptsEmailAtMaximumSupportedLength() {
+        // Arrange
+        String email = "a".repeat(242) + "@example.com";
+        var command = new CreateCustomerCommand(CustomerType.PERSONAL, DocumentType.DNI,
+                "12345678", "Ana Perez", email, null, null);
+        when(repository.existsByDocument(DocumentType.DNI, "12345678")).thenReturn(Single.just(false));
+        when(repository.save(any(Customer.class))).thenAnswer(invocation ->
+                Single.just(invocation.getArgument(0)));
+
+        // Act
+        var result = service.create(command);
+
+        // Assert
+        result.test().assertComplete().assertValue(customer -> email.equals(customer.email()));
+    }
+
+    @Test
+    void deletePropagatesRepositoryFailure() {
+        // Arrange
+        UUID id = UUID.randomUUID();
+        var customer = new Customer(id, CustomerType.PERSONAL, DocumentType.DNI, "12345678",
+                "Ana Perez", null, null, null, CustomerStatus.ACTIVE, Instant.now());
+        when(repository.findById(id)).thenReturn(Maybe.just(customer));
+        when(repository.save(any(Customer.class))).thenReturn(Single.error(new RuntimeException("database failed")));
+
+        // Act
+        var result = service.delete(id);
+
+        // Assert
+        result.test().assertError(RuntimeException.class);
+    }
+
+    @Test
+    void activatePropagatesRepositoryFailure() {
+        // Arrange
+        UUID id = UUID.randomUUID();
+        var customer = new Customer(id, CustomerType.PERSONAL, DocumentType.DNI, "12345678",
+                "Ana Perez", null, null, null, CustomerStatus.INACTIVE, Instant.now());
+        when(repository.findById(id)).thenReturn(Maybe.just(customer));
+        when(repository.save(any(Customer.class))).thenReturn(Single.error(new RuntimeException("database failed")));
+
+        // Act
+        var result = service.activate(id);
+
+        // Assert
+        result.test().assertError(RuntimeException.class);
     }
 }

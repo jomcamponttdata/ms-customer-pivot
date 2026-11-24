@@ -25,6 +25,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+qimport static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -138,6 +139,38 @@ class R2dbcCustomerRepositoryAdapterTest {
     }
 
     @Test
+    void saveMapsDuplicateFromNestedConstraintMessage() {
+        // Arrange
+        var customer = customer(CustomerStatus.ACTIVE);
+        var cause = new IllegalStateException("duplicate document");
+        when(repository.existsById(customer.id())).thenReturn(Mono.just(false));
+        when(template.insert(any(CustomerEntity.class)))
+                .thenReturn(Mono.error(new DataIntegrityViolationException("insert failed", cause)));
+
+        // Act
+        var result = adapter.save(customer);
+
+        // Assert
+        result.test().assertError(DuplicateCustomerDocumentException.class);
+    }
+
+    @Test
+    void saveDetectsDuplicateFromNestedDriverMessage() {
+        // Arrange
+        var customer = customer(CustomerStatus.ACTIVE);
+        var driverFailure = new IllegalStateException("duplicate document key");
+        when(repository.existsById(customer.id())).thenReturn(Mono.just(false));
+        when(template.insert(any(CustomerEntity.class)))
+                .thenReturn(Mono.error(new DataIntegrityViolationException("insert failed", driverFailure)));
+
+        // Act
+        var result = adapter.save(customer);
+
+        // Assert
+        result.test().assertError(DuplicateCustomerDocumentException.class);
+    }
+
+    @Test
     void savePreservesNonIntegrityRuntimeError() {
         // Arrange
         var customer = customer(CustomerStatus.ACTIVE);
@@ -207,6 +240,44 @@ class R2dbcCustomerRepositoryAdapterTest {
 
         // Assert
         result.test().assertComplete();
+    }
+
+    @Test
+    void findAllOmitsStatusCriterionForAllAndNullStatus() {
+        // Arrange
+        when(template.select(any(Query.class), any(Class.class))).thenReturn(Flux.empty());
+
+        // Act
+        var allStatuses = adapter.findAll(null, CustomerStatus.ALL, 0, 20);
+        var unspecifiedStatus = adapter.findAll(null, null, 0, 20);
+
+        // Assert
+        allStatuses.test().assertComplete();
+        unspecifiedStatus.test().assertComplete();
+        var captor = org.mockito.ArgumentCaptor.forClass(Query.class);
+        verify(template, org.mockito.Mockito.times(2)).select(captor.capture(), any(Class.class));
+        captor.getAllValues().forEach(query ->
+                org.junit.jupiter.api.Assertions.assertFalse(
+                        query.getCriteria().orElseThrow().toString().contains("status")));
+    }
+
+    @Test
+    void findAllOmitsLifecycleCriterionForAllAndNullStatus() {
+        // Arrange
+        when(template.select(any(Query.class), any(Class.class))).thenReturn(Flux.empty());
+
+        // Act
+        var allStatuses = adapter.findAll(null, CustomerStatus.ALL, 0, 20);
+        var unspecifiedStatus = adapter.findAll(null, null, 0, 20);
+
+        // Assert
+        allStatuses.test().assertComplete();
+        unspecifiedStatus.test().assertComplete();
+        var queryCaptor = org.mockito.ArgumentCaptor.forClass(Query.class);
+        verify(template, times(2)).select(queryCaptor.capture(), any(Class.class));
+        queryCaptor.getAllValues().forEach(query ->
+                org.junit.jupiter.api.Assertions.assertFalse(
+                        query.getCriteria().orElseThrow().toString().contains("status")));
     }
 
     @Test

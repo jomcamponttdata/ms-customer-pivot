@@ -5,71 +5,131 @@ skinparam shadowing false
 skinparam sequenceMessageAlign center
 
 actor "Cliente / Empleado\n(Postman)" as User
-participant "CustomerController\n(inbound adapter)" as Controller
-participant "CustomerCommandService\n/ CustomerQueryService" as Service
-participant "CustomerRepositoryPort\n+ R2dbcAdapter" as Repo
+participant "CustomerController\n(adaptador WebFlux)" as Controller
+participant "CustomerApplicationService\n(casos de uso, RxJava 3)" as Service
+participant "CustomerRepositoryPort\n+ adaptador R2DBC" as Repo
 database "PostgreSQL\ncustomer_db" as DB
+participant "CorrelationIdWebFilter\n(WebFilter, prioridad máxima)" as Correlation
+
+note over User, Correlation
+  Todas las solicitudes siguientes atraviesan este filtro antes del controlador.
+  Reutiliza X-Correlation-ID si no está vacío; si falta o está en blanco,
+  genera un UUID. Todas las respuestas incluyen X-Correlation-ID: {id}
+  con el mismo valor recibido o generado.
+end note
 
 == 1. Crear cliente (POST /api/v1/customers) ==
-User -> Controller : POST /customers {type, document, name, ...}
+User -> Controller : POST /api/v1/customers\nCustomerRequest\nX-Correlation-ID: {id} (opcional)
 Controller -> Service : create(command)
-Service -> Repo : existsByDocument(type, number)
-Repo -> DB : SELECT 1 (R2DBC)
-DB --> Repo : resultado
+Service -> Repo : existsByDocument(documentType, documentNumber)
+Repo -> DB : SELECT EXISTS(...)
+DB --> Repo : existe / no existe
 Repo --> Service : Single<Boolean>
-alt documento ya registrado
-  Service --> Controller : DuplicateResourceException
-  Controller --> User : 409 Conflict (problem+json)
-else documento nuevo
-  Service -> Repo : save(Customer ACTIVE)
-  Repo -> DB : INSERT (restriccion unica documentType + documentNumber)
-  alt solicitud concurrente duplica el documento
-    DB --> Repo : unique constraint violation
-    Repo --> Service : DuplicateResourceException
-    Service --> Controller : error
-    Controller --> User : 409 Conflict (problem+json)
-  else cliente creado
+alt documento duplicado
+  Service --> Controller : Single.error(DuplicateCustomerDocumentException)
+  Controller --> User : 409 Conflict\napplication/problem+json\nX-Correlation-ID: {id}
+else documento disponible
+  Service -> Repo : save(Customer con status ACTIVE)
+  Repo -> DB : INSERT customer
+  alt colisión concurrente de documento
+    DB --> Repo : violación de restricción única
+    Repo --> Service : DuplicateCustomerDocumentException
+    Service --> Controller : Single.error(...)
+      Controller --> User : 409 Conflict\napplication/problem+json\nX-Correlation-ID: {id}
+  else guardado
     DB --> Repo : fila creada
     Repo --> Service : Single<Customer>
-    Service --> Controller : Single<Customer>
-    Controller --> User : 201 Created + Location
+    Controller -> Controller : RxJava3Adapter.singleToMono(...)
+      Controller --> User : 201 Created + Location\nCustomer\nX-Correlation-ID: {id}
   end
 end
 
-== 2. Listar clientes (GET /api/v1/customers?page=0&size=20) ==
-User -> Controller : GET /customers?customerType=PERSONAL&page=0&size=20
-Controller -> Service : findAll(filter, pageQuery)
-Service -> Repo : findAll(filter, pageQuery)
-Repo -> DB : SELECT ... ORDER BY createdAt, id LIMIT/OFFSET
+== 2. Listar clientes (GET /api/v1/customers) ==
+User -> Controller : GET /api/v1/customers\n?customerType&status&page&size\nX-Correlation-ID: {id} (opcional)
+Controller -> Service : findAll(customerType, status, page, size)
+note right of Service
+  status admite ACTIVE, INACTIVE o ALL;
+  si se omite, se usa ACTIVE.
+  page/size tienen valores predeterminados
+  0/20 y size máximo 100.
+end note
+Service -> Repo : findAll(filtros, página, tamaño)
+Repo -> DB : SELECT ... ORDER BY createdAt, id\nLIMIT/OFFSET
 DB --> Repo : filas
 Repo --> Service : Flowable<Customer>
-Service --> Controller : Flowable<Customer>
-Controller --> User : 200 OK (application/json o application/x-ndjson)
+Controller -> Controller : RxJava3Adapter.flowableToFlux(...)
+Controller --> User : 200 OK\napplication/json (arreglo) o application/x-ndjson\nX-Correlation-ID: {id}
 
-== 3. Eliminar cliente (DELETE /api/v1/customers/{id}) -> baja logica ==
-User -> Controller : DELETE /customers/{id}
-Controller -> Service : delete(id)
-Service -> Repo : findById(id)
-Repo -> DB : SELECT
-DB --> Repo : fila
-Repo --> Service : Maybe<Customer>
-alt no existe
-  Service --> Controller : ResourceNotFoundException
-  Controller --> User : 404 Not Found
-else existe
-  Service -> Service : customer.deactivate()
-  Service -> Repo : save(Customer INACTIVE)
-  Repo -> DB : UPDATE status = INACTIVE
-  DB --> Repo : OK
-  Service --> Controller : Completable
-  Controller --> User : 204 No Content
+== 3. Consultar cliente (GET /api/v1/customers/{customerId}) ==
+User -> Controller : GET /api/v1/customers/{customerId}\nX-Correlation-ID: {id} (opcional)
+Controller -> Service : findById(customerId)
+Service -> Repo : findById(customerId)
+Repo -> DB : SELECT customer
+DB --> Repo : fila o vacío
+Repo --> Service : Single<Customer> / vacío
+alt no existe o está INACTIVE
+  Service --> Controller : Single.error(CustomerNotFoundException)
+  Controller --> User : 404 Not Found\napplication/problem+json\nX-Correlation-ID: {id}
+else está ACTIVE
+  Controller -> Controller : RxJava3Adapter.singleToMono(...)
+  Controller --> User : 200 OK\nCustomer\nX-Correlation-ID: {id}
 end
 
-note over User, DB
-  GET /customers/{id} y PUT /customers/{id} siguen el mismo patron
-  (buscar -> validar -> guardar). Las respuestas de error usan RFC 7807.
-  account-service y credit-service consultan GET /customers/{id}
-  para conocer tipo y estado (ACTIVE) del cliente.
+== 4. Actualizar cliente (PUT /api/v1/customers/{customerId}) ==
+User -> Controller : PUT /api/v1/customers/{customerId}\nCustomerUpdateRequest\nX-Correlation-ID: {id} (opcional)
+Controller -> Service : update(customerId, command)
+Service -> Repo : findById(customerId)
+Repo -> DB : SELECT customer
+DB --> Repo : cliente activo
+Repo --> Service : Single<Customer>
+Service -> Service : validar campos editables;\nconservar customerType
+Service -> Repo : save(customer.update(...))
+Repo -> DB : UPDATE customer
+DB --> Repo : fila actualizada
+Repo --> Service : Single<Customer>
+Controller -> Controller : RxJava3Adapter.singleToMono(...)
+Controller --> User : 200 OK + Customer\nX-Correlation-ID: {id}
+note over Controller, User
+  Solicitud inválida: 400.
+  Cliente inexistente o INACTIVE: 404.
 end note
+
+== 5. Baja lógica (DELETE /api/v1/customers/{customerId}) ==
+User -> Controller : DELETE /api/v1/customers/{customerId}\nX-Correlation-ID: {id} (opcional)
+Controller -> Service : delete(customerId)
+Service -> Repo : findById(customerId)
+Repo -> DB : SELECT customer
+DB --> Repo : fila o vacío
+Repo --> Service : Single<Customer> / vacío
+alt no existe o está INACTIVE
+  Service --> Controller : error CustomerNotFoundException
+  Controller --> User : 404 Not Found\napplication/problem+json\nX-Correlation-ID: {id}
+else existe y está ACTIVE
+  Service -> Repo : save(customer.deactivate())
+  Repo -> DB : UPDATE status = INACTIVE
+  DB --> Repo : OK
+  Repo --> Service : Single<Customer>
+  Controller -> Controller : RxJava3Adapter.completableToMono(...)
+  Controller --> User : 204 No Content\nX-Correlation-ID: {id}
+end
+
+== 6. Reactivar cliente (PATCH /api/v1/customers/{customerId}/activate) ==
+User -> Controller : PATCH /api/v1/customers/{customerId}/activate\nX-Correlation-ID: {id} (opcional)
+Controller -> Service : activate(customerId)
+Service -> Repo : findById(customerId)
+Repo -> DB : SELECT customer
+DB --> Repo : fila o vacío
+Repo --> Service : Single<Customer> / vacío
+alt no existe
+  Service --> Controller : error CustomerNotFoundException
+  Controller --> User : 404 Not Found\napplication/problem+json\nX-Correlation-ID: {id}
+else existe
+  Service -> Repo : save(customer.activate())
+  Repo -> DB : UPDATE status = ACTIVE
+  DB --> Repo : fila actualizada
+  Repo --> Service : Single<Customer>
+  Controller -> Controller : RxJava3Adapter.singleToMono(...)
+  Controller --> User : 200 OK + Customer\nX-Correlation-ID: {id}
+end
 
 @enduml

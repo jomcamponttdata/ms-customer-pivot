@@ -145,6 +145,40 @@ class CustomerControllerTest {
     }
 
     @Test
+    void defaultsMissingStatusAndSupportsAllStatus() {
+        // Arrange
+        when(getCustomers.findAll(null, CustomerStatus.ACTIVE, 0, 20)).thenReturn(Flowable.empty());
+        when(getCustomers.findAll(null, CustomerStatus.ALL, 0, 20)).thenReturn(Flowable.empty());
+
+        // Act
+        var active = customerController.findAllCustomers(null, null, 0, 20, null);
+        var all = customerController.findAllCustomers(null, "ALL", 0, 20, null);
+
+        // Assert
+        RxJava3Adapter.monoToCompletable(active).test().assertComplete();
+        RxJava3Adapter.monoToCompletable(all).test().assertComplete();
+        verify(getCustomers).findAll(null, CustomerStatus.ACTIVE, 0, 20);
+        verify(getCustomers).findAll(null, CustomerStatus.ALL, 0, 20);
+    }
+
+    @Test
+    void defaultsMissingStatusToActiveAndAcceptsAllStatus() {
+        // Arrange
+        when(getCustomers.findAll(null, CustomerStatus.ACTIVE, 0, 20)).thenReturn(Flowable.empty());
+        when(getCustomers.findAll(null, CustomerStatus.ALL, 0, 20)).thenReturn(Flowable.empty());
+
+        // Act
+        var defaultStatus = customerController.findAllCustomers(null, null, 0, 20, null);
+        var allStatuses = customerController.findAllCustomers(null, "ALL", 0, 20, null);
+
+        // Assert
+        RxJava3Adapter.monoToCompletable(defaultStatus).test().assertComplete();
+        RxJava3Adapter.monoToCompletable(allStatuses).test().assertComplete();
+        verify(getCustomers).findAll(null, CustomerStatus.ACTIVE, 0, 20);
+        verify(getCustomers).findAll(null, CustomerStatus.ALL, 0, 20);
+    }
+
+    @Test
     void shouldDelegateFindAllWithTypeAndExplicitPagination() {
         // Arrange
         when(getCustomers.findAll(CustomerType.PERSONAL, CustomerStatus.ACTIVE, 2, 10))
