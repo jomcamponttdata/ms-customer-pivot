@@ -199,6 +199,9 @@ components:
     CustomerType:
       type: string
       enum: [PERSONAL, BUSINESS]
+    CustomerProfile:
+      type: string
+      enum: [VIP, PYME]
     DocumentType:
       type: string
       enum: [DNI, CEX, PASSPORT, RUC]
@@ -212,6 +215,10 @@ components:
       properties:
         customerType:
           $ref: '#/components/schemas/CustomerType'
+        customerProfile:
+          allOf:
+            - $ref: '#/components/schemas/CustomerProfile'
+          description: Optional profile chosen at customer creation; VIP requires PERSONAL and PYME requires BUSINESS.
         documentType:
           $ref: '#/components/schemas/DocumentType'
         documentNumber:
@@ -239,7 +246,7 @@ components:
           example: Av. Principal 123
     CustomerUpdateRequest:
       type: object
-      description: Full update of editable fields; customerType is immutable.
+      description: Full update of editable fields; customerType and customerProfile are immutable.
       required: [documentType, documentNumber, name]
       additionalProperties: false
       properties:
@@ -274,6 +281,10 @@ components:
           format: uuid
         customerType:
           $ref: '#/components/schemas/CustomerType'
+        customerProfile:
+          allOf:
+            - $ref: '#/components/schemas/CustomerProfile'
+          description: Optional profile selected when the customer was created.
         documentType:
           $ref: '#/components/schemas/DocumentType'
         documentNumber:
