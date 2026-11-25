@@ -7,8 +7,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class CustomerServiceApplication {
 
-    /** Starts the Spring Boot application. */
-    public static void main(String[] args) {
-        SpringApplication.run(CustomerServiceApplication.class, args);
-    }
+  /** Starts the Spring Boot application. */
+  public static void main(String[] args) {
+    SpringApplication.run(CustomerServiceApplication.class, args);
+  }
 }

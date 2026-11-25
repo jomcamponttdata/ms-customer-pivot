@@ -26,3 +26,13 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 CREATE INDEX IF NOT EXISTS ix_customers_created_id ON customers (created_at, id);
+
+-- Runs on every startup; adding a nullable checked column preserves existing rows.
+ALTER TABLE customers
+    ADD COLUMN IF NOT EXISTS customer_profile VARCHAR(16)
+    CONSTRAINT ck_customers_profile_compatibility
+    CHECK (
+        customer_profile IS NULL
+        OR (customer_profile = 'VIP' AND customer_type = 'PERSONAL')
+        OR (customer_profile = 'PYME' AND customer_type = 'BUSINESS')
+    );

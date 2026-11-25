@@ -1,0 +1,226 @@
+{
+  "info": {
+    "_postman_id": "91c06c4b-e9d0-4167-aa2e-2b034cc1aaf5",
+    "name": "ms-customer - Part II",
+    "description": "Part II verification: optional VIP/PYME customer profiles. Requires ms-customer only.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Create VIP personal customer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('VIP customer created', () => pm.response.to.have.status(201));",
+              "const b=pm.response.json(); pm.test('Profile is VIP', () => pm.expect(b.customerProfile).to.equal('VIP'));",
+              "pm.environment.set('vipCustomerId', b.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/customers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customers"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerType\": \"PERSONAL\",\n  \"customerProfile\": \"VIP\",\n  \"documentType\": \"DNI\",\n  \"documentNumber\": \"86078056\",\n  \"name\": \"Part II VIP Test\",\n  \"email\": \"vip86078056@example.com\",\n  \"phone\": \"987654321\",\n  \"address\": \"Av. Test 1\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "02 - Create PYME business customer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('PYME customer created', () => pm.response.to.have.status(201));",
+              "const b=pm.response.json(); pm.test('Profile is PYME', () => pm.expect(b.customerProfile).to.equal('PYME'));",
+              "pm.environment.set('pymeCustomerId', b.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/customers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customers"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerType\": \"BUSINESS\",\n  \"customerProfile\": \"PYME\",\n  \"documentType\": \"RUC\",\n  \"documentNumber\": \"20101269764\",\n  \"name\": \"Part II PYME Test\",\n  \"email\": \"pyme20101269764@example.com\",\n  \"phone\": \"987654322\",\n  \"address\": \"Av. Test 2\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "03 - Create standard personal customer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Standard customer created without profile', () => pm.response.to.have.status(201));",
+              "const b=pm.response.json(); pm.test('Profile is absent or null', () => pm.expect(b.customerProfile == null).to.equal(true));",
+              "pm.environment.set('standardCustomerId', b.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/customers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customers"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerType\": \"PERSONAL\",\n  \"documentType\": \"DNI\",\n  \"documentNumber\": \"31767251\",\n  \"name\": \"Part II Standard Test\",\n  \"email\": \"std31767251@example.com\",\n  \"phone\": \"987654323\",\n  \"address\": \"Av. Test 3\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "04 - Reject VIP profile on business customer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Invalid profile pairing rejected', () => pm.expect(pm.response.code).to.be.oneOf([400,422]));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/customers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customers"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customerType\": \"BUSINESS\",\n  \"customerProfile\": \"VIP\",\n  \"documentType\": \"RUC\",\n  \"documentNumber\": \"20458723064\",\n  \"name\": \"Invalid VIP business\",\n  \"email\": \"bad@example.com\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8181"
+    },
+    {
+      "key": "vipCustomerId",
+      "value": ""
+    },
+    {
+      "key": "pymeCustomerId",
+      "value": ""
+    },
+    {
+      "key": "standardCustomerId",
+      "value": ""
+    }
+  ]
+}
